@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import styles from './Navbar.module.css';
@@ -11,8 +12,9 @@ export default function Navbar() {
 
   return (
     <header className={styles.header}>
-      <Link href="/" className={styles.logo}>
-        <span className={styles.logoIcon}>⚡</span> ConferAI
+      <Link href="/" className={styles.logo} style={{ gap: '12px' }}>
+        <Image src="/ConferLogo.png" alt="ConferAI Logo" width={32} height={32} style={{ objectFit: 'contain' }} />
+        ConferAI
       </Link>
       
       <nav className={styles.nav}>
