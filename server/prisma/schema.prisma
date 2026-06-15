@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  image     String?
+  meetings  Meeting[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Meeting {
+  id        String    @id @default(cuid())
+  title     String
+  status    String    @default("scheduled") // scheduled, live, ended
+  startTime DateTime?
+  endTime   DateTime?
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  
+  segments  TranscriptSegment[]
+  summary   Summary?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model TranscriptSegment {
+  id        String   @id @default(cuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+  speaker   String
+  text      String
+  timestamp DateTime @default(now())
+}
+
+model Summary {
+  id           String   @id @default(cuid())
+  meetingId    String   @unique
+  meeting      Meeting  @relation(fields: [meetingId], references: [id])
+  keyPoints    String[]
+  actionItems  String[]
+  decisions    String[]
+  createdAt    DateTime @default(now())
+}
