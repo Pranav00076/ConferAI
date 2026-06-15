@@ -102,7 +102,7 @@ export default function DashboardPage() {
             </div>
             
             <div className={styles.cardFooter}>
-              <Link href={`/meeting/${meeting.meetingId}`} className={styles.actionBtn}>
+              <Link href={`/saved/${meeting.id}`} className={styles.actionBtn}>
                 View Transcript
               </Link>
             </div>

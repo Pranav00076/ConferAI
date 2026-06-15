@@ -186,7 +186,7 @@ wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
         }
 
         if (state && !state.dgConnection) {
-          const dgLive = new WebSocketClient('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&diarize=true', {
+          const dgLive = new WebSocketClient('wss://api.deepgram.com/v1/listen?model=nova-2&language=hi&smart_format=true&diarize=true&endpointing=500', {
             headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` }
           });
 
