@@ -2,13 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import styles from './Navbar.module.css';
 
 export default function Navbar() {
   const pathname = usePathname();
-  
-  // Mock auth state for MVP UI before NextAuth is fully wired up
-  const session = null; 
+  const { user, signInWithGoogle, logOut, loading } = useAuth(); 
 
   return (
     <header className={styles.header}>
@@ -34,13 +33,16 @@ export default function Navbar() {
       </nav>
 
       <div className={styles.actions}>
-        {session ? (
-          <div className={styles.userProfile}>
-            <div className={styles.avatar}>U</div>
-            <span>User</span>
+        {loading ? (
+          <span>Loading...</span>
+        ) : user ? (
+          <div className={styles.userProfile} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className={styles.avatar}>{user.displayName?.charAt(0) || 'U'}</div>
+            <span>{user.displayName || 'User'}</span>
+            <button onClick={logOut} className={styles.loginBtn} style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)', marginLeft: '8px' }}>Logout</button>
           </div>
         ) : (
-          <button className={styles.loginBtn}>Sign In</button>
+          <button onClick={signInWithGoogle} className={styles.loginBtn}>Sign In</button>
         )}
       </div>
     </header>

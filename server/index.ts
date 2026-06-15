@@ -29,10 +29,17 @@ function broadcastParticipants(meetingId: string) {
   const meetingClients = activeMeetings.get(meetingId);
   if (!meetingClients) return;
 
-  const participants: string[] = [];
+  const participants: any[] = [];
   meetingClients.forEach(client => {
     const state = clientStates.get(client);
-    if (state) participants.push(state.name);
+    if (state) {
+      participants.push({
+        id: state.id,
+        name: state.name,
+        isHost: state.isHost,
+        visible: state.visible
+      });
+    }
   });
 
   meetingClients.forEach(client => {
@@ -61,8 +68,11 @@ const MOCK_PHRASES = [
 
 // Meeting state
 interface ClientState {
+  id: string;
   meetingId: string;
   name: string;
+  isHost: boolean;
+  visible: boolean;
   dgConnection: WebSocketClient | null;
 }
 
@@ -106,9 +116,56 @@ wss.on('connection', (ws: WebSocket) => {
         
         if (currentMeetingId) {
           activeMeetings.get(currentMeetingId)!.add(ws);
-          const name = `Guest ${Math.floor(Math.random() * 1000)}`;
-          clientStates.set(ws, { meetingId: currentMeetingId, name, dgConnection: null });
+          const name = data.displayName || `Guest ${Math.floor(Math.random() * 1000)}`;
+          clientStates.set(ws, { 
+            id: data.clientId || Math.random().toString(36).substring(7),
+            meetingId: currentMeetingId, 
+            name, 
+            isHost: false,
+            visible: true,
+            dgConnection: null 
+          });
           broadcastParticipants(currentMeetingId);
+        }
+      }
+
+      if (data.type === 'RENAME_DEVICE') {
+        const state = clientStates.get(ws);
+        if (state && currentMeetingId) {
+          state.name = data.name;
+          broadcastParticipants(currentMeetingId);
+        }
+      }
+
+      if (data.type === 'CLAIM_HOST') {
+        const state = clientStates.get(ws);
+        if (state && currentMeetingId) {
+          // Un-host everyone else
+          const clients = activeMeetings.get(currentMeetingId);
+          if (clients) {
+            clients.forEach(c => {
+              const cState = clientStates.get(c);
+              if (cState) cState.isHost = false;
+            });
+          }
+          state.isHost = true;
+          broadcastParticipants(currentMeetingId);
+        }
+      }
+
+      if (data.type === 'TOGGLE_VISIBILITY') {
+        const state = clientStates.get(ws);
+        if (state?.isHost && currentMeetingId) {
+          const clients = activeMeetings.get(currentMeetingId);
+          if (clients) {
+            clients.forEach(c => {
+              const cState = clientStates.get(c);
+              if (cState && cState.id === data.targetId) {
+                cState.visible = data.visible;
+              }
+            });
+            broadcastParticipants(currentMeetingId);
+          }
         }
       }
 
@@ -146,11 +203,14 @@ wss.on('connection', (ws: WebSocket) => {
               }
 
               if (transcript && isFinal) {
+                const currentClientState = clientStates.get(ws);
                 const segment = {
                   id: Math.random().toString(36).substring(7),
-                  speaker: speakerId,
+                  speakerId: currentClientState ? currentClientState.id : speakerId,
+                  speakerName: currentClientState ? currentClientState.name : speakerId,
                   text: transcript,
-                  timestamp: new Date().toISOString()
+                  timestamp: new Date().toISOString(),
+                  isVisible: currentClientState ? currentClientState.visible : true
                 };
                 
                 // Broadcast to all clients in the meeting

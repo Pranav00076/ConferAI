@@ -1,4 +1,8 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import styles from './Dashboard.module.css';
 
 // Mock data for MVP
@@ -27,13 +31,50 @@ const MOCK_MEETINGS = [
 ];
 
 export default function DashboardPage() {
+  const [joinId, setJoinId] = useState('');
+
+  const handleStartNew = () => {
+    // Generate a random 6-character meeting ID
+    const newId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    window.location.href = `/meeting/${newId}`;
+  };
+
+  const handleJoin = () => {
+    if (joinId.trim()) {
+      window.location.href = `/meeting/${joinId.trim()}`;
+    }
+  };
+
   return (
     <main className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>Your Meetings</h1>
-        <Link href="/meeting/new" className={styles.startBtn}>
-          <span className={styles.startIcon}>+</span> Start New Meeting
-        </Link>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input 
+              type="text" 
+              placeholder="Enter Meeting ID..." 
+              value={joinId}
+              onChange={(e) => setJoinId(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleJoin(); }}
+              style={{ 
+                padding: '8px 16px', 
+                borderRadius: '8px', 
+                border: '1px solid var(--border-color)', 
+                background: 'var(--bg-secondary)', 
+                color: 'var(--text-primary)',
+                outline: 'none',
+                minWidth: '200px'
+              }}
+            />
+            <button onClick={handleJoin} className={styles.startBtn} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              Join
+            </button>
+          </div>
+          <button onClick={handleStartNew} className={styles.startBtn}>
+            <span className={styles.startIcon}>+</span> Start New Meeting
+          </button>
+        </div>
       </header>
 
       <div className={styles.grid}>

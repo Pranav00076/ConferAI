@@ -2,23 +2,37 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import styles from './MeetingRoom.module.css';
+import { useAuth } from '@/contexts/AuthContext';
 import { saveAs } from 'file-saver';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import jsPDF from 'jspdf';
 
+interface Participant {
+  id: string;
+  name: string;
+  isHost: boolean;
+  visible: boolean;
+}
+
 interface TranscriptSegment {
   id: string;
-  speaker: string;
+  speakerId: string;
+  speakerName: string;
   text: string;
   timestamp: string;
+  isVisible: boolean;
 }
 
 export default function MeetingRoom({ params }: { params: Promise<{ id: string }> }) {
   const { id: meetingId } = React.use(params);
+  const { user } = useAuth();
+  const [myId] = useState(() => Math.random().toString(36).substring(7));
   const [status, setStatus] = useState<'idle' | 'live' | 'ended'>('idle');
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
-  const [participants, setParticipants] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [presentationMode, setPresentationMode] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [customName, setCustomName] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -27,11 +41,19 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     // Setup WebSocket connection
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${host}:8081`);
+    
+    // Use the explicit Vercel environment variable if provided (for production)
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || `${protocol}//${host}:8081`;
+    const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
       console.log('Connected to WebSocket');
-      ws.send(JSON.stringify({ type: 'JOIN_MEETING', meetingId }));
+      ws.send(JSON.stringify({ 
+        type: 'JOIN_MEETING', 
+        meetingId,
+        clientId: myId,
+        displayName: user?.displayName || 'Guest'
+      }));
     };
 
     ws.onmessage = (event) => {
@@ -71,11 +93,12 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStatus('live');
-      
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
 
-      mediaRecorder.ondataavailable = (event) => {
+      // Do NOT specify a mimeType. iOS Safari does not support webm/opus.
+      // Letting the browser pick its native format ensures cross-device compatibility.
+      mediaRecorderRef.current = new MediaRecorder(stream);
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
           // Send the audio blob chunk to the WebSocket server
           wsRef.current.send(event.data);
@@ -83,7 +106,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       };
 
       // Start recording and emitting chunks every 1 second
-      mediaRecorder.start(1000);
+      mediaRecorderRef.current.start(1000);
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'START_TRANSCRIPTION' }));
@@ -167,11 +190,11 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         </button>
         <div className={styles.transcriptContainer} ref={scrollRef}>
           <div className={styles.segmentsList}>
-            {segments.slice(-3).map((seg) => (
+            {segments.filter(s => s.isVisible !== false).slice(-3).map((seg) => (
               <div key={seg.id} className={styles.segment}>
                 <div className={styles.segmentContent}>
                   <div className={styles.segmentHeader}>
-                    <span className={styles.speakerName}>{seg.speaker}</span>
+                    <span className={styles.speakerName}>{seg.speakerName || seg.speakerId}</span>
                   </div>
                   <p className={styles.text}>{seg.text}</p>
                 </div>
@@ -193,7 +216,43 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
             {status === 'ended' && <span className={`${styles.statusBadge} ${styles.statusEnded}`}>Ended</span>}
           </div>
           <div style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', marginTop: '8px' }}>
-            {participants.length} participant(s) in room: {participants.join(', ')}
+            {(() => {
+              const amIHost = participants.find(p => p.id === myId)?.isHost;
+              const myParticipant = participants.find(p => p.id === myId);
+              return (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <strong>Participants ({participants.length}):</strong>
+                    {!amIHost && <button onClick={() => wsRef.current?.send(JSON.stringify({type: 'CLAIM_HOST'}))} style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--brand-primary)', color: '#fff' }}>Claim Host</button>}
+                    {myParticipant && !editingName && (
+                      <button onClick={() => { setCustomName(myParticipant.name); setEditingName(true); }} style={{ textDecoration: 'underline' }}>Rename Me</button>
+                    )}
+                    {editingName && (
+                      <span style={{ display: 'flex', gap: '4px' }}>
+                        <input value={customName} onChange={e => setCustomName(e.target.value)} onKeyDown={e => {
+                          if (e.key === 'Enter') { wsRef.current?.send(JSON.stringify({type: 'RENAME_DEVICE', name: customName})); setEditingName(false); }
+                        }} style={{ padding: '2px 4px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }} />
+                        <button onClick={() => { wsRef.current?.send(JSON.stringify({type: 'RENAME_DEVICE', name: customName})); setEditingName(false); }}>Save</button>
+                      </span>
+                    )}
+                  </div>
+                  <ul style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {participants.map(p => (
+                      <li key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {p.name} {p.id === myId ? '(You)' : ''} {p.isHost ? '👑' : ''}
+                        {amIHost && p.id !== myId && (
+                           <label style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', fontSize: '0.75rem' }}>
+                             <input type="checkbox" checked={p.visible} onChange={(e) => {
+                               wsRef.current?.send(JSON.stringify({type: 'TOGGLE_VISIBILITY', targetId: p.id, visible: e.target.checked}));
+                             }} /> Show in Presentation
+                           </label>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
           </div>
         </div>
         
@@ -238,7 +297,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
                   </div>
                   <div className={styles.segmentContent}>
                     <div className={styles.segmentHeader}>
-                      <span className={styles.speakerName}>{seg.speaker}</span>
+                      <span className={styles.speakerName}>{seg.speakerName || seg.speakerId}</span>
                       <span className={styles.timestamp}>{formatTime(seg.timestamp)}</span>
                     </div>
                     <p className={styles.text}>{seg.text}</p>
