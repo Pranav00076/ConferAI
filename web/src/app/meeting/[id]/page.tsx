@@ -4,6 +4,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import styles from './MeetingRoom.module.css';
 import { useAuth } from '@/contexts/AuthContext';
 import { saveAs } from 'file-saver';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import jsPDF from 'jspdf';
 
@@ -25,7 +27,7 @@ interface TranscriptSegment {
 
 export default function MeetingRoom({ params }: { params: Promise<{ id: string }> }) {
   const { id: meetingId } = React.use(params);
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [myId] = useState(() => Math.random().toString(36).substring(7));
   const [status, setStatus] = useState<'idle' | 'live' | 'ended'>('idle');
   const [segments, setSegments] = useState<TranscriptSegment[]>([]);
@@ -33,11 +35,14 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
   const [presentationMode, setPresentationMode] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [customName, setCustomName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   useEffect(() => {
+    if (loading) return; // Wait for Firebase Auth to initialize before connecting
+
     // Setup WebSocket connection
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
     const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -79,9 +84,17 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     wsRef.current = ws;
 
     return () => {
+      mediaRecorderRef.current?.stop();
       ws.close();
     };
-  }, [meetingId]);
+  }, [meetingId, loading]);
+
+  // Sync Firebase profile name if the user logs in after joining
+  useEffect(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN && user?.displayName) {
+      wsRef.current.send(JSON.stringify({ type: 'RENAME_DEVICE', name: user.displayName }));
+    }
+  }, [user?.displayName]);
 
   const startMeeting = async () => {
     try {
@@ -134,6 +147,39 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
   const formatTime = (isoString: string) => {
     const d = new Date(isoString);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const saveMeeting = async () => {
+    if (!user) {
+      alert("You must be logged in to save meetings.");
+      return;
+    }
+    const name = prompt("Enter a name for this meeting:", `Meeting ${meetingId}`);
+    if (!name) return;
+
+    setIsSaving(true);
+    try {
+      const allText = segments.map(s => `${s.speakerName || s.speakerId}: ${s.text}`).join('\n');
+      const summary = allText.length > 150 ? allText.substring(0, 150) + '...' : allText || "No transcript recorded.";
+      
+      const duration = segments.length > 0 ? formatTime(segments[segments.length - 1].timestamp) : '0 min';
+
+      await addDoc(collection(db, 'meetings'), {
+        userId: user.uid,
+        meetingId: meetingId,
+        title: name,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        duration: duration,
+        summary: summary,
+        createdAt: serverTimestamp()
+      });
+      alert("Meeting saved to your dashboard!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save meeting. Check your Firestore configuration.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const exportTxt = () => {
@@ -211,7 +257,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       <header className={styles.header}>
         <div>
           <div className={styles.titleGroup}>
-            <h1 className={styles.meetingTitle}>Product Sync: Q3 Roadmap</h1>
+            <h1 className={styles.meetingTitle}>Room: {meetingId}</h1>
             {status === 'live' && <span className={`${styles.statusBadge} ${styles.statusLive}`}>Live</span>}
             {status === 'ended' && <span className={`${styles.statusBadge} ${styles.statusEnded}`}>Ended</span>}
           </div>
@@ -277,6 +323,9 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
               <button className={styles.btnSecondary} onClick={exportTxt}>Export TXT</button>
               <button className={styles.btnSecondary} onClick={exportDocx}>Export DOCX</button>
               <button className={styles.btnPrimary} onClick={exportPdf}>Export PDF</button>
+              <button onClick={saveMeeting} className={styles.btnPrimary} disabled={isSaving} style={{ background: 'var(--brand-primary)', border: 'none', color: '#000', marginLeft: '8px' }}>
+                {isSaving ? 'Saving...' : 'Save Meeting'}
+              </button>
             </div>
           )}
         </div>

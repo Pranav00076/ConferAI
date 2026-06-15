@@ -1,37 +1,45 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import styles from './Dashboard.module.css';
+import { useAuth } from '@/contexts/AuthContext';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-// Mock data for MVP
-const MOCK_MEETINGS = [
-  {
-    id: '1',
-    title: 'Product Sync: Q3 Roadmap',
-    date: 'Oct 24, 2023',
-    duration: '45 min',
-    summary: 'Discussed the upcoming features for Q3 including real-time collaboration and new export formats. Decided to prioritize the WebSocket refactor.'
-  },
-  {
-    id: '2',
-    title: 'Design Review',
-    date: 'Oct 22, 2023',
-    duration: '30 min',
-    summary: 'Reviewed the new dark mode aesthetics and glassmorphism elements. Approved the new color palette.'
-  },
-  {
-    id: '3',
-    title: 'Engineering All-Hands',
-    date: 'Oct 20, 2023',
-    duration: '1h 15m',
-    summary: 'Company wide update on engineering metrics, Q2 retrospect, and architecture overview for the new monolith.'
-  }
-];
+interface SavedMeeting {
+  id: string;
+  meetingId: string;
+  title: string;
+  date: string;
+  duration: string;
+  summary: string;
+}
 
 export default function DashboardPage() {
+  const { user, loading } = useAuth();
   const [joinId, setJoinId] = useState('');
+  const [meetings, setMeetings] = useState<SavedMeeting[]>([]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+
+    const q = query(
+      collection(db, 'meetings'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedMeetings = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as SavedMeeting[];
+      setMeetings(fetchedMeetings);
+    });
+
+    return () => unsubscribe();
+  }, [user, loading]);
 
   const handleStartNew = () => {
     // Generate a random 6-character meeting ID
@@ -78,7 +86,10 @@ export default function DashboardPage() {
       </header>
 
       <div className={styles.grid}>
-        {MOCK_MEETINGS.map((meeting) => (
+        {meetings.length === 0 && !loading && (
+          <div style={{ color: 'var(--text-tertiary)' }}>No saved meetings yet. Join a room and click "Save Meeting"!</div>
+        )}
+        {meetings.map((meeting) => (
           <div key={meeting.id} className={styles.card}>
             <div className={styles.cardHeader}>
               <div>
@@ -93,12 +104,9 @@ export default function DashboardPage() {
             </div>
             
             <div className={styles.cardFooter}>
-              <Link href={`/meeting/${meeting.id}`} className={styles.actionBtn}>
+              <Link href={`/meeting/${meeting.meetingId}`} className={styles.actionBtn}>
                 View Transcript
               </Link>
-              <button className={styles.actionBtn}>
-                Export
-              </button>
             </div>
           </div>
         ))}
