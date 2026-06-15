@@ -137,7 +137,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
   };
 
   const exportTxt = () => {
-    const content = segments.map(s => `[${formatTime(s.timestamp)}] ${s.speaker}: ${s.text}`).join('\n\n');
+    const content = segments.map(s => `[${formatTime(s.timestamp)}] ${s.speakerName || s.speakerId}: ${s.text}`).join('\n\n');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     saveAs(blob, `meeting_${meetingId}.txt`);
   };
@@ -149,7 +149,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         children: segments.map(s => 
           new Paragraph({
             children: [
-              new TextRun({ text: `[${formatTime(s.timestamp)}] ${s.speaker}: `, bold: true }),
+              new TextRun({ text: `[${formatTime(s.timestamp)}] ${s.speakerName || s.speakerId}: `, bold: true }),
               new TextRun(s.text)
             ]
           })
@@ -167,7 +167,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     doc.setFontSize(12);
     let y = 20;
     segments.forEach(s => {
-      const line = `[${formatTime(s.timestamp)}] ${s.speaker}: ${s.text}`;
+      const line = `[${formatTime(s.timestamp)}] ${s.speakerName || s.speakerId}: ${s.text}`;
       const splitText = doc.splitTextToSize(line, 180);
       doc.text(splitText, 10, y);
       y += 7 * splitText.length;
@@ -293,7 +293,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
               {segments.map((seg) => (
                 <div key={seg.id} className={styles.segment}>
                   <div className={styles.speakerAvatar}>
-                    {seg.speaker.charAt(0)}
+                    {(seg.speakerName || seg.speakerId).charAt(0)}
                   </div>
                   <div className={styles.segmentContent}>
                     <div className={styles.segmentHeader}>
