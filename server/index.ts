@@ -1,19 +1,49 @@
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import WebSocketClient from 'ws'; // Node ws client
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 
-const port = process.env.PORT || 8080;
-const server = http.createServer(app);
+const port = process.env.PORT || 8081;
+const keyPath = path.join(__dirname, '../key.pem');
+const certPath = path.join(__dirname, '../cert.pem');
+const isHttps = fs.existsSync(keyPath) && fs.existsSync(certPath);
+
+const server = isHttps 
+  ? https.createServer({ key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }, app)
+  : http.createServer(app);
 
 // Initialize WebSocket server instance
 const wss = new WebSocketServer({ server });
+
+function broadcastParticipants(meetingId: string) {
+  const meetingClients = activeMeetings.get(meetingId);
+  if (!meetingClients) return;
+
+  const participants: string[] = [];
+  meetingClients.forEach(client => {
+    const state = clientStates.get(client);
+    if (state) participants.push(state.name);
+  });
+
+  meetingClients.forEach(client => {
+    if (client.readyState === WebSocketClient.OPEN) {
+      client.send(JSON.stringify({
+        type: 'PARTICIPANTS_UPDATE',
+        data: participants
+      }));
+    }
+  });
+}
 
 // Mock speaker labels and phrases for tech conference
 const SPEAKERS = ['Alice (PM)', 'Bob (Eng)', 'Charlie (Design)'];
@@ -30,13 +60,14 @@ const MOCK_PHRASES = [
 ];
 
 // Meeting state
-interface MeetingSession {
-  id: string;
-  clients: Set<WebSocket>;
-  intervalId?: NodeJS.Timeout | undefined;
+interface ClientState {
+  meetingId: string;
+  name: string;
+  dgConnection: WebSocketClient | null;
 }
 
-const activeMeetings = new Map<string, MeetingSession>();
+const activeMeetings = new Map<string, Set<WebSocketClient>>();
+const clientStates = new Map<WebSocketClient, ClientState>();
 
 function generateMockSegment() {
   const speaker = SPEAKERS[Math.floor(Math.random() * SPEAKERS.length)];
@@ -55,8 +86,9 @@ wss.on('connection', (ws: WebSocket) => {
 
   ws.on('message', (message: Buffer, isBinary: boolean) => {
     if (isBinary) {
-      if (currentMeetingId) {
-        console.log(`[Meeting ${currentMeetingId}] Received audio chunk (${message.length} bytes). Forward to Whisper/Deepgram API...`);
+      const state = clientStates.get(ws);
+      if (state && state.dgConnection && state.dgConnection.readyState === WebSocketClient.OPEN) {
+        state.dgConnection.send(message);
       }
       return;
     }
@@ -69,46 +101,90 @@ wss.on('connection', (ws: WebSocket) => {
         console.log(`Client joined meeting: ${currentMeetingId}`);
         
         if (currentMeetingId && !activeMeetings.has(currentMeetingId)) {
-          activeMeetings.set(currentMeetingId, {
-            id: currentMeetingId,
-            clients: new Set(),
-          });
+          activeMeetings.set(currentMeetingId, new Set());
         }
         
         if (currentMeetingId) {
-          const session = activeMeetings.get(currentMeetingId)!;
-          session.clients.add(ws);
+          activeMeetings.get(currentMeetingId)!.add(ws);
+          const name = `Guest ${Math.floor(Math.random() * 1000)}`;
+          clientStates.set(ws, { meetingId: currentMeetingId, name, dgConnection: null });
+          broadcastParticipants(currentMeetingId);
         }
       }
 
       if (data.type === 'START_TRANSCRIPTION' && currentMeetingId) {
-        console.log(`Started transcription for: ${currentMeetingId}`);
-        const session = activeMeetings.get(currentMeetingId)!;
+        console.log(`Started transcription for client in: ${currentMeetingId}`);
+        const state = clientStates.get(ws);
         
-        // Start emitting mock transcripts every 3-6 seconds
-        if (!session.intervalId) {
-          session.intervalId = setInterval(() => {
-            const segment = generateMockSegment();
+        if (!process.env.DEEPGRAM_API_KEY || process.env.DEEPGRAM_API_KEY === 'your_deepgram_api_key_here') {
+           console.error("Deepgram API key missing in .env!");
+           return;
+        }
+
+        if (state && !state.dgConnection) {
+          const dgLive = new WebSocketClient('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&diarize=true', {
+            headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` }
+          });
+
+          state.dgConnection = dgLive;
+
+          dgLive.on('open', () => {
+            console.log(`Deepgram connection opened for a client in ${currentMeetingId}`);
+          });
+
+          dgLive.on('message', (message: string) => {
+            const data = JSON.parse(message);
             
-            // Broadcast to all clients in this meeting
-            session.clients.forEach(client => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({
-                  type: 'TRANSCRIPT_SEGMENT',
-                  data: segment
-                }));
+            if (data.type === 'Results') {
+              const transcript = data.channel.alternatives[0].transcript;
+              const isFinal = data.is_final;
+              
+              let speakerId = "Speaker";
+              if (data.channel.alternatives[0].words && data.channel.alternatives[0].words.length > 0) {
+                  const spk = data.channel.alternatives[0].words[0].speaker;
+                  if (spk !== undefined) speakerId = `Speaker ${spk + 1}`;
               }
-            });
-          }, 4000);
+
+              if (transcript && isFinal) {
+                const segment = {
+                  id: Math.random().toString(36).substring(7),
+                  speaker: speakerId,
+                  text: transcript,
+                  timestamp: new Date().toISOString()
+                };
+                
+                // Broadcast to all clients in the meeting
+                const meetingClients = activeMeetings.get(currentMeetingId!);
+                if (meetingClients) {
+                  meetingClients.forEach(client => {
+                    if (client.readyState === WebSocketClient.OPEN) {
+                      client.send(JSON.stringify({
+                        type: 'TRANSCRIPT_SEGMENT',
+                        data: segment
+                      }));
+                    }
+                  });
+                }
+              }
+            }
+          });
+
+          dgLive.on('error', (err: any) => {
+            console.error("Deepgram error:", err);
+          });
+          
+          dgLive.on('close', () => {
+            console.log(`Deepgram connection closed for a client in ${currentMeetingId}`);
+          });
         }
       }
 
       if (data.type === 'STOP_TRANSCRIPTION' && currentMeetingId) {
-         console.log(`Stopped transcription for: ${currentMeetingId}`);
-         const session = activeMeetings.get(currentMeetingId);
-         if (session && session.intervalId) {
-           clearInterval(session.intervalId);
-           session.intervalId = undefined;
+         console.log(`Stopped transcription for client in: ${currentMeetingId}`);
+         const state = clientStates.get(ws);
+         if (state && state.dgConnection) {
+           state.dgConnection.send(JSON.stringify({ type: 'CloseStream' }));
+           state.dgConnection = null;
          }
       }
 
@@ -119,15 +195,24 @@ wss.on('connection', (ws: WebSocket) => {
 
   ws.on('close', () => {
     console.log('Client disconnected');
-    if (currentMeetingId && activeMeetings.has(currentMeetingId)) {
-      const session = activeMeetings.get(currentMeetingId)!;
-      session.clients.delete(ws);
-      
-      // Cleanup if meeting is empty
-      if (session.clients.size === 0) {
-        if (session.intervalId) clearInterval(session.intervalId);
-        activeMeetings.delete(currentMeetingId);
-        console.log(`Cleaned up meeting: ${currentMeetingId}`);
+    if (currentMeetingId) {
+      const state = clientStates.get(ws);
+      if (state && state.dgConnection) {
+        state.dgConnection.close();
+      }
+      clientStates.delete(ws);
+
+      const meetingClients = activeMeetings.get(currentMeetingId);
+      if (meetingClients) {
+        meetingClients.delete(ws);
+        
+        // Cleanup if meeting is empty, otherwise update others
+        if (meetingClients.size === 0) {
+          activeMeetings.delete(currentMeetingId);
+          console.log(`Cleaned up meeting: ${currentMeetingId}`);
+        } else {
+          broadcastParticipants(currentMeetingId);
+        }
       }
     }
   });
