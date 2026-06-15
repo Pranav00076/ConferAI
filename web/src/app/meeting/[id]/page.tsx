@@ -25,6 +25,16 @@ interface TranscriptSegment {
   isVisible: boolean;
 }
 
+// Deterministic color generator for speakers
+function stringToColor(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash % 360);
+  return `hsl(${hue}, 70%, 50%)`;
+}
+
 export default function MeetingRoom({ params }: { params: Promise<{ id: string }> }) {
   const { id: meetingId } = React.use(params);
   const { user, loading } = useAuth();
@@ -110,8 +120,16 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         return;
       }
       
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone access with aggressive conference-hall noise filtering
+      const savedMicId = localStorage.getItem('preferredMicId');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          deviceId: savedMicId ? { exact: savedMicId } : undefined,
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: true
+        } 
+      });
       setStatus('live');
 
       // Do NOT specify a mimeType. iOS Safari does not support webm/opus.
@@ -237,7 +255,10 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       <div className={styles.presentationMode}>
         <button 
           className={styles.presentationExitBtn}
-          onClick={() => setPresentationMode(false)}
+          onClick={() => {
+            setPresentationMode(false);
+            if (document.fullscreenElement) document.exitFullscreen();
+          }}
         >
           Exit Presentation Mode
         </button>
@@ -247,7 +268,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
               <div key={seg.id} className={styles.segment}>
                 <div className={styles.segmentContent}>
                   <div className={styles.segmentHeader}>
-                    <span className={styles.speakerName}>{seg.speakerName || seg.speakerId}</span>
+                    <span className={styles.speakerName} style={{ color: stringToColor(seg.speakerId) }}>{seg.speakerName || seg.speakerId}</span>
                   </div>
                   <p className={styles.text}>{seg.text}</p>
                 </div>
@@ -319,7 +340,13 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
           )}
           {status === 'live' && (
             <>
-              <button className={styles.btnSecondary} onClick={() => setPresentationMode(true)}>
+              <button 
+                className={styles.btnSecondary} 
+                onClick={() => {
+                  setPresentationMode(true);
+                  document.documentElement.requestFullscreen().catch(err => console.error("Fullscreen error", err));
+                }}
+              >
                 Presentation Mode
               </button>
               <button className={styles.btnDanger} onClick={endMeeting}>
@@ -348,20 +375,25 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
             </div>
           ) : (
             <div className={styles.segmentsList}>
-              {segments.map((seg) => (
-                <div key={seg.id} className={styles.segment}>
-                  <div className={styles.speakerAvatar}>
-                    {(seg.speakerName || seg.speakerId).charAt(0)}
-                  </div>
-                  <div className={styles.segmentContent}>
-                    <div className={styles.segmentHeader}>
-                      <span className={styles.speakerName}>{seg.speakerName || seg.speakerId}</span>
-                      <span className={styles.timestamp}>{formatTime(seg.timestamp)}</span>
+              {segments.map((seg) => {
+                const speakerColor = stringToColor(seg.speakerId);
+                return (
+                  <div key={seg.id} className={styles.segment}>
+                    <div className={styles.speakerAvatar} style={{ background: speakerColor }}>
+                      {(seg.speakerName || seg.speakerId).charAt(0).toUpperCase()}
                     </div>
-                    <p className={styles.text}>{seg.text}</p>
+                    <div className={styles.segmentContent}>
+                      <div className={styles.segmentHeader}>
+                        <span className={styles.speakerName} style={{ color: speakerColor }}>
+                          {seg.speakerName || seg.speakerId}
+                        </span>
+                        <span className={styles.timestamp}>{formatTime(seg.timestamp)}</span>
+                      </div>
+                      <p className={styles.text}>{seg.text}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
