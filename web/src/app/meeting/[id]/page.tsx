@@ -267,7 +267,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
               const myParticipant = participants.find(p => p.id === myId);
               return (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                     <strong>Participants ({participants.length}):</strong>
                     {!amIHost && <button onClick={() => wsRef.current?.send(JSON.stringify({type: 'CLAIM_HOST'}))} style={{ padding: '2px 8px', borderRadius: 4, background: 'var(--brand-primary)', color: '#fff' }}>Claim Host</button>}
                     {myParticipant && !editingName && (
@@ -319,7 +319,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
             </>
           )}
           {status === 'ended' && (
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button className={styles.btnSecondary} onClick={exportTxt}>Export TXT</button>
               <button className={styles.btnSecondary} onClick={exportDocx}>Export DOCX</button>
               <button className={styles.btnPrimary} onClick={exportPdf}>Export PDF</button>

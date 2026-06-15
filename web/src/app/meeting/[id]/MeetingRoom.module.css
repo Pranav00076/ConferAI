@@ -247,3 +247,42 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  
+  .titleGroup {
+    flex-wrap: wrap;
+  }
+  
+  .presentationMode {
+    padding: 24px;
+  }
+  
+  .presentationMode .text {
+    font-size: 2rem;
+  }
+  
+  .presentationMode .speakerName {
+    font-size: 1.2rem;
+  }
+  
+  .transcriptContainer {
+    padding: 16px;
+  }
+  
+  .segment {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

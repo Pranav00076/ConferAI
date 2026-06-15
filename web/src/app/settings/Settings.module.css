@@ -83,3 +83,17 @@
   font-weight: 500;
   margin-top: 16px;
 }
+
+@media (max-width: 640px) {
+  .settingRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .select {
+    width: 100%;
+    max-width: 100%;
+    text-overflow: ellipsis;
+  }
+}
