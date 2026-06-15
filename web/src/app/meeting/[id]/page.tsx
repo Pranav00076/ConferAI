@@ -264,7 +264,9 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       <header className={styles.header}>
         <div>
           <div className={styles.titleGroup}>
-            <h1 className={styles.meetingTitle}>Room: {meetingId}</h1>
+            <h1 className={styles.meetingTitle}>
+              {meetingId === 'local' ? '📡 Local WiFi Room' : `Room: ${meetingId}`}
+            </h1>
             {status === 'live' && <span className={`${styles.statusBadge} ${styles.statusLive}`}>Live</span>}
             {status === 'ended' && <span className={`${styles.statusBadge} ${styles.statusEnded}`}>Ended</span>}
           </div>

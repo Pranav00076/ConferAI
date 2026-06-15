@@ -56,32 +56,30 @@ export default function DashboardPage() {
   return (
     <main className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Your Meetings</h1>
+        <h1 className={styles.title}>Dashboard</h1>
         <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             <input 
               type="text" 
-              placeholder="Enter Meeting ID..." 
+              placeholder="Enter Room ID" 
               value={joinId}
               onChange={(e) => setJoinId(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleJoin(); }}
-              style={{ 
-                padding: '8px 16px', 
-                borderRadius: '8px', 
-                border: '1px solid var(--border-color)', 
-                background: 'var(--bg-secondary)', 
-                color: 'var(--text-primary)',
-                outline: 'none',
-                minWidth: '200px'
-              }}
+              style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
             />
-            <button onClick={handleJoin} className={styles.startBtn} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+            <button 
+              className={styles.actionBtn} 
+              onClick={handleJoin}
+              style={{ padding: '0 24px', background: 'var(--bg-tertiary)' }}
+            >
               Join
             </button>
           </div>
-          <button onClick={handleStartNew} className={styles.startBtn}>
+          <button className={styles.startBtn} onClick={handleStartNew}>
             <span className={styles.startIcon}>+</span> Start New Meeting
           </button>
+          <Link href="/meeting/local" className={styles.startBtn} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--brand-primary)', color: 'var(--brand-primary)' }}>
+            <span className={styles.startIcon}>📡</span> Find on WiFi
+          </Link>
         </div>
       </header>
 

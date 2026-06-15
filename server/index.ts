@@ -90,9 +90,16 @@ function generateMockSegment() {
   };
 }
 
-wss.on('connection', (ws: WebSocket) => {
+wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
   console.log('New client connected');
   let currentMeetingId: string | null = null;
+  
+  const forwarded = req.headers['x-forwarded-for'];
+  const clientIp = typeof forwarded === 'string' 
+    ? forwarded.split(',')[0].trim() 
+    : (Array.isArray(forwarded) ? forwarded[0].trim() : req.socket.remoteAddress || 'unknown');
+  
+  const localMeetingId = `wifi-${clientIp.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   ws.on('message', (message: Buffer, isBinary: boolean) => {
     if (isBinary) {
@@ -107,8 +114,8 @@ wss.on('connection', (ws: WebSocket) => {
       const data = JSON.parse(message.toString());
       
       if (data.type === 'JOIN_MEETING') {
-        currentMeetingId = data.meetingId;
-        console.log(`Client joined meeting: ${currentMeetingId}`);
+        currentMeetingId = data.meetingId === 'local' ? localMeetingId : data.meetingId;
+        console.log(`Client joined meeting: ${currentMeetingId} (Requested: ${data.meetingId})`);
         
         if (currentMeetingId && !activeMeetings.has(currentMeetingId)) {
           activeMeetings.set(currentMeetingId, new Set());
