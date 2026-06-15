@@ -96,6 +96,13 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     }
   }, [user?.displayName]);
 
+  // Auto-scroll to bottom when new segments arrive
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [segments]);
+
   const startMeeting = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
