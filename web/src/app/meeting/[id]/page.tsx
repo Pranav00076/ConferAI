@@ -46,6 +46,10 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
   const [editingName, setEditingName] = useState(false);
   const [customName, setCustomName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
+  const [renamingSpeakerId, setRenamingSpeakerId] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -183,10 +187,29 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     if (!name) return;
 
     setIsSaving(true);
+    
+    const allText = segments.map(s => `${speakerMap[s.speakerId] || s.speakerName || s.speakerId}: ${s.text}`).join('\n');
+    
+    // Call Groq AI to generate a beautiful summary
+    let summary = allText.length > 150 ? allText.substring(0, 150) + '...' : allText || "No transcript recorded.";
+    
     try {
-      const allText = segments.map(s => `${s.speakerName || s.speakerId}: ${s.text}`).join('\n');
-      const summary = allText.length > 150 ? allText.substring(0, 150) + '...' : allText || "No transcript recorded.";
-      
+      const res = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: allText })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.summary) {
+          summary = data.summary;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to generate AI summary", err);
+    }
+
+    try {
       const duration = segments.length > 0 ? formatTime(segments[segments.length - 1].timestamp) : '0 min';
 
       await addDoc(collection(db, 'meetings'), {
@@ -196,6 +219,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         duration: duration,
         summary: summary,
+        transcript: allText,
         createdAt: serverTimestamp()
       });
       alert("Meeting saved to your dashboard!");
@@ -264,16 +288,22 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         </button>
         <div className={styles.transcriptContainer} ref={scrollRef}>
           <div className={styles.segmentsList}>
-            {segments.filter(s => s.isVisible !== false).slice(-3).map((seg) => (
-              <div key={seg.id} className={styles.segment}>
-                <div className={styles.segmentContent}>
-                  <div className={styles.segmentHeader}>
-                    <span className={styles.speakerName} style={{ color: stringToColor(seg.speakerId) }}>{seg.speakerName || seg.speakerId}</span>
+            {segments.filter(s => s.isVisible !== false).slice(-3).map((seg) => {
+              const speakerColor = stringToColor(seg.speakerId);
+              const displayName = speakerMap[seg.speakerId] || seg.speakerName || seg.speakerId;
+              return (
+                <div key={seg.id} className={styles.segment}>
+                  <div className={styles.segmentContent}>
+                    <div className={styles.segmentHeader}>
+                      <span className={styles.speakerName} style={{ color: speakerColor }}>
+                        {displayName}
+                      </span>
+                    </div>
+                    <p className={styles.text}>{seg.text}</p>
                   </div>
-                  <p className={styles.text}>{seg.text}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -377,16 +407,43 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
             <div className={styles.segmentsList}>
               {segments.map((seg) => {
                 const speakerColor = stringToColor(seg.speakerId);
+                const displayName = speakerMap[seg.speakerId] || seg.speakerName || seg.speakerId;
                 return (
                   <div key={seg.id} className={styles.segment}>
                     <div className={styles.speakerAvatar} style={{ background: speakerColor }}>
-                      {(seg.speakerName || seg.speakerId).charAt(0).toUpperCase()}
+                      {displayName.charAt(0).toUpperCase()}
                     </div>
                     <div className={styles.segmentContent}>
                       <div className={styles.segmentHeader}>
-                        <span className={styles.speakerName} style={{ color: speakerColor }}>
-                          {seg.speakerName || seg.speakerId}
-                        </span>
+                        {renamingSpeakerId === seg.speakerId ? (
+                          <form onSubmit={(e) => {
+                            e.preventDefault();
+                            if (renameInput.trim()) {
+                              setSpeakerMap(prev => ({ ...prev, [seg.speakerId]: renameInput.trim() }));
+                            }
+                            setRenamingSpeakerId(null);
+                          }}>
+                            <input 
+                              autoFocus
+                              value={renameInput}
+                              onChange={e => setRenameInput(e.target.value)}
+                              onBlur={() => setRenamingSpeakerId(null)}
+                              style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--brand-primary)', borderRadius: '4px', padding: '2px 8px', fontSize: '1rem' }}
+                            />
+                          </form>
+                        ) : (
+                          <span 
+                            className={styles.speakerName} 
+                            style={{ color: speakerColor, cursor: 'pointer' }}
+                            onClick={() => {
+                              setRenameInput(displayName);
+                              setRenamingSpeakerId(seg.speakerId);
+                            }}
+                            title="Click to rename"
+                          >
+                            {displayName}
+                          </span>
+                        )}
                         <span className={styles.timestamp}>{formatTime(seg.timestamp)}</span>
                       </div>
                       <p className={styles.text}>{seg.text}</p>
