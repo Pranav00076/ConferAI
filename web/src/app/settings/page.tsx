@@ -1,11 +1,17 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useTheme } from 'next-themes';
 import styles from './Settings.module.css';
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [selectedMic, setSelectedMic] = useState<string>('');
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     // Request permission to see device labels, then enumerate devices
@@ -46,7 +52,11 @@ export default function SettingsPage() {
             <div className={styles.settingLabel}>Theme</div>
             <div className={styles.settingDesc}>Choose your preferred interface theme.</div>
           </div>
-          <select className={styles.select} defaultValue="dark">
+          <select 
+            className={styles.select} 
+            value={mounted ? theme : "dark"}
+            onChange={(e) => setTheme(e.target.value)}
+          >
             <option value="dark">Dark Mode</option>
             <option value="light">Light Mode</option>
             <option value="system">System</option>

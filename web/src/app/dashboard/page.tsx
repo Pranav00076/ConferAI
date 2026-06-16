@@ -85,7 +85,7 @@ export default function DashboardPage() {
 
       <div className={styles.grid}>
         {meetings.length === 0 && !loading && (
-          <div style={{ color: 'var(--text-tertiary)' }}>No saved meetings yet. Join a room and click "Save Meeting"!</div>
+          <div style={{ color: 'var(--text-tertiary)' }}>No saved meetings yet. Join a room and click &quot;Save Meeting&quot;!</div>
         )}
         {meetings.map((meeting) => (
           <div key={meeting.id} className={styles.card}>

@@ -29,7 +29,7 @@ export default function Home() {
             <div className={styles.featureIcon}>🎤</div>
             <h3 className={styles.featureTitle}>Real-Time Captioning</h3>
             <p className={styles.featureText}>
-              Live captions displayed on a fullscreen "Presentation Mode" to make your events more accessible.
+              Live captions displayed on a fullscreen &quot;Presentation Mode&quot; to make your events more accessible.
             </p>
           </div>
           <div className={styles.featureCard}>
