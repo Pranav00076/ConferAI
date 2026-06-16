@@ -12,9 +12,8 @@ export default function Navbar() {
 
   return (
     <header className={styles.header}>
-      <Link href="/" className={styles.logo} style={{ gap: '12px' }}>
-        <Image src="/ConferLogo.png" alt="ConferAI Logo" width={32} height={32} style={{ objectFit: 'contain' }} />
-        ConferAI
+      <Link href="/" className={styles.logo} style={{ gap: '0px' }}>
+        <Image src="/ConferLogo.png" alt="ConferAI Logo" width={120} height={120} style={{ objectFit: 'cover' }} />
       </Link>
       
       <nav className={styles.nav}>

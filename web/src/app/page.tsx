@@ -16,7 +16,7 @@ export default function Home() {
             <Link href="/dashboard" className={styles.btnPrimary}>
               Get Started for Free
             </Link>
-            <Link href="#features" className={styles.btnSecondary}>
+            <Link href="/features" className={styles.btnSecondary}>
               Learn More
             </Link>
           </div>
