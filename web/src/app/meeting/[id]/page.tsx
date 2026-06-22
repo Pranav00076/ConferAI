@@ -49,6 +49,12 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
   const [speakerMap, setSpeakerMap] = useState<Record<string, string>>({});
   const [renamingSpeakerId, setRenamingSpeakerId] = useState<string | null>(null);
   const [renameInput, setRenameInput] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [editingSegmentId, setEditingSegmentId] = useState<string | null>(null);
+  const [segmentEditText, setSegmentEditText] = useState('');
+  
+  const isMutedRef = useRef(false);
   
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,10 +123,21 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
     }
   }, [segments]);
 
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    isMutedRef.current = nextMuted;
+  };
+
   const startMeeting = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Your browser blocks microphone access on unsecure HTTP connections. To test cross-device, use localhost or a secure tunnel like ngrok.");
+        showToast("Browser blocks mic access on unsecure HTTP connections.", 'error');
         return;
       }
       
@@ -141,7 +158,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       mediaRecorderRef.current = new MediaRecorder(stream);
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+        if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN && !isMutedRef.current) {
           // Send the audio blob chunk to the WebSocket server
           wsRef.current.send(event.data);
         }
@@ -155,7 +172,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
       }
     } catch (err) {
       console.error('Microphone access denied', err);
-      alert('Microphone access is required to start transcription.');
+      showToast('Microphone access is required to start transcription.', 'error');
     }
   };
 
@@ -180,7 +197,7 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
 
   const saveMeeting = async () => {
     if (!user) {
-      alert("You must be logged in to save meetings.");
+      showToast("You must be logged in to save meetings.", 'error');
       return;
     }
     const name = prompt("Enter a name for this meeting:", `Meeting ${meetingId}`);
@@ -222,10 +239,10 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
         transcript: allText,
         createdAt: serverTimestamp()
       });
-      alert("Meeting saved to your dashboard!");
+      showToast("Meeting saved to your dashboard!", 'success');
     } catch (err) {
       console.error(err);
-      alert("Failed to save meeting. Check your Firestore configuration.");
+      showToast("Failed to save meeting. Check your Firestore configuration.", 'error');
     } finally {
       setIsSaving(false);
     }
@@ -318,7 +335,13 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
             <h1 className={styles.meetingTitle}>
               {meetingId === 'local' ? '📡 Local WiFi Room' : `Room: ${meetingId}`}
             </h1>
-            {status === 'live' && <span className={`${styles.statusBadge} ${styles.statusLive}`}>Live</span>}
+            {status === 'live' && (
+              isMuted ? (
+                <span className={`${styles.statusBadge} ${styles.statusPaused}`}>Paused</span>
+              ) : (
+                <span className={`${styles.statusBadge} ${styles.statusLive}`}>Live</span>
+              )
+            )}
             {status === 'ended' && <span className={`${styles.statusBadge} ${styles.statusEnded}`}>Ended</span>}
           </div>
           <div style={{ fontSize: '0.875rem', color: 'var(--text-tertiary)', marginTop: '8px' }}>
@@ -370,6 +393,13 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
           )}
           {status === 'live' && (
             <>
+              <button 
+                className={styles.btnSecondary} 
+                onClick={toggleMute}
+                style={{ color: isMuted ? 'var(--warning)' : 'inherit', borderColor: isMuted ? 'var(--warning)' : 'var(--border-color)' }}
+              >
+                {isMuted ? 'Unmute Mic' : 'Mute Mic'}
+              </button>
               <button 
                 className={styles.btnSecondary} 
                 onClick={() => {
@@ -446,7 +476,36 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
                         )}
                         <span className={styles.timestamp}>{formatTime(seg.timestamp)}</span>
                       </div>
-                      <p className={styles.text}>{seg.text}</p>
+                      {editingSegmentId === seg.id ? (
+                        <form onSubmit={(e) => {
+                          e.preventDefault();
+                          setSegments(prev => prev.map(s => s.id === seg.id ? { ...s, text: segmentEditText } : s));
+                          setEditingSegmentId(null);
+                        }}>
+                          <textarea 
+                            autoFocus
+                            value={segmentEditText}
+                            onChange={e => setSegmentEditText(e.target.value)}
+                            onBlur={() => {
+                              setSegments(prev => prev.map(s => s.id === seg.id ? { ...s, text: segmentEditText } : s));
+                              setEditingSegmentId(null);
+                            }}
+                            style={{ width: '100%', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--brand-primary)', borderRadius: '4px', padding: '8px', fontSize: '1.25rem', minHeight: '60px', marginTop: '4px' }}
+                          />
+                        </form>
+                      ) : (
+                        <p 
+                          className={styles.text} 
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setSegmentEditText(seg.text);
+                            setEditingSegmentId(seg.id);
+                          }}
+                          title="Click to edit text"
+                        >
+                          {seg.text}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -455,6 +514,12 @@ export default function MeetingRoom({ params }: { params: Promise<{ id: string }
           )}
         </div>
       </main>
+      
+      {toast && (
+        <div className={`${styles.toast} ${styles[toast.type]}`}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

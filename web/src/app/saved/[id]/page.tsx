@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import styles from '../../meeting/[id]/MeetingRoom.module.css'; // Reuse meeting room styles
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface SavedMeeting {
   id: string;
@@ -73,7 +75,9 @@ export default function SavedMeetingPage({ params }: { params: Promise<{ id: str
           <div style={{ maxWidth: '900px', margin: '0 auto', marginBottom: '40px' }}>
             <div style={{ padding: '24px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)', marginBottom: '32px' }}>
               <h2 style={{ fontSize: '1.25rem', marginBottom: '8px' }}>Summary</h2>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{meeting.summary}</p>
+              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{meeting.summary}</ReactMarkdown>
+              </div>
               <div style={{ marginTop: '16px', fontSize: '0.875rem', color: 'var(--text-tertiary)', display: 'flex', gap: '16px' }}>
                 <span>📅 {meeting.date}</span>
                 <span>⏱️ {meeting.duration}</span>
